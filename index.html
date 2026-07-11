@@ -28,9 +28,73 @@
         .player { cursor: grab; }
         .player:active { cursor: grabbing; }
         .court-line { stroke: #000; stroke-width: 1.5; }
+
+        /* Tombol mode di atas layar */
+        #modeBar {
+            position: fixed;
+            top: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+            z-index: 5;
+        }
+        #modeBar button {
+            font-size: 13px;
+            padding: 6px 14px;
+            border: 1px solid #888;
+            border-radius: 16px;
+            background: rgba(255,255,255,0.9);
+            cursor: pointer;
+        }
+        #modeBar button.active {
+            background: #1a5c1a;
+            color: #fff;
+            border-color: #1a5c1a;
+        }
+
+        /* Panduan awal */
+        #intro {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+        #intro .box {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px 18px;
+            max-width: 300px;
+            margin: 0 16px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        #intro .box p { margin: 0 0 14px; font-size: 15px; line-height: 1.5; }
+        #intro .box button {
+            font-size: 15px;
+            padding: 8px 32px;
+            border: none;
+            border-radius: 8px;
+            background: #1a5c1a;
+            color: #fff;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
+<div id="intro">
+    <div class="box">
+        <p>Tinggal gerak-gerakin gambar pemain sesuka hati, nanti kelihatan mana area tanggung jawab tiap pemain dan mana area <b>deadzone</b> (merah).</p>
+        <button id="introOk">OK</button>
+    </div>
+</div>
+<div id="modeBar">
+    <button id="modeFree" class="active">Bebas</button>
+    <button id="modeFollow">Ikuti Partner</button>
+</div>
 <!--
   Skala: 40 px = 1 meter. Lapangan ganda nyata 6,10 m x 13,40 m.
   Pojok kiri-atas lapangan pada piksel (44, 24); net di tengah.
@@ -137,6 +201,21 @@
     const BLIND = 0.40;      // efek titik buta
 
     let drag = null;
+    let followMode = false;
+
+    // --- UI: panduan awal & tombol mode ---
+    document.getElementById("introOk").addEventListener("click", () => {
+        document.getElementById("intro").style.display = "none";
+    });
+    const modeFreeBtn = document.getElementById("modeFree");
+    const modeFollowBtn = document.getElementById("modeFollow");
+    function setMode(follow) {
+        followMode = follow;
+        modeFreeBtn.classList.toggle("active", !follow);
+        modeFollowBtn.classList.toggle("active", follow);
+    }
+    modeFreeBtn.addEventListener("click", () => setMode(false));
+    modeFollowBtn.addEventListener("click", () => setMode(true));
 
     function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
     function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
@@ -301,6 +380,78 @@
     });
     window.addEventListener("pointerup", () => { drag = null; });
 
+    // --- Mode "Ikuti Partner": cari posisi partner yang meminimalkan deadzone ---
+    // Grid kasar agar tetap ringan di HP: kandidat posisi & sel evaluasi.
+    const FOLLOW_CAND_STEP = 14; // jarak antar kandidat posisi partner (px)
+    const FOLLOW_EVAL_CELL = 12; // ukuran sel evaluasi deadzone (px)
+
+    function halfOf(p) {
+        return (p === green || p === blue)
+            ? { y0: RECT_Y0, y1: RECT_Y1, face: FACE_DEG }
+            : { y0: FAR_Y0, y1: FAR_Y1, face: FACE_DEG + 180 };
+    }
+
+    // Posisi partner terbaik: deadzone minimum; seri -> paling dekat posisi partner sekarang.
+    function bestPartnerPos(fixedX, fixedY, partner) {
+        const h = halfOf(partner);
+        const hb = halfBoundsOf(partner);
+        const timeBudget = T_REACT + travelTime(MAX_REACH_M, V_NOMINAL, A_NOMINAL);
+        const curX = +partner.getAttribute("cx"), curY = +partner.getAttribute("cy");
+
+        // Precompute: sel yang TIDAK terjangkau pemain yang dipegang.
+        const cells = [];
+        for (let y = h.y0 + FOLLOW_EVAL_CELL / 2; y < h.y1; y += FOLLOW_EVAL_CELL) {
+            for (let x = RECT_X0 + FOLLOW_EVAL_CELL / 2; x < RECT_X1; x += FOLLOW_EVAL_CELL) {
+                if (arrivalTime(x, y, fixedX, fixedY, SPEED, h.face, BLIND) > timeBudget)
+                    cells.push(x, y);
+            }
+        }
+
+        let best = { x: curX, y: curY }, bestDead = Infinity, bestMove = Infinity;
+        for (let cy = hb.y0; cy <= hb.y1; cy += FOLLOW_CAND_STEP) {
+            for (let cx = RECT_X0; cx <= RECT_X1; cx += FOLLOW_CAND_STEP) {
+                if (Math.hypot(cx - fixedX, cy - fixedY) < 24) continue;
+                let dead = 0;
+                for (let i = 0; i < cells.length; i += 2) {
+                    if (arrivalTime(cells[i], cells[i + 1], cx, cy, SPEED, h.face, BLIND) > timeBudget)
+                        dead++;
+                }
+                const move = Math.hypot(cx - curX, cy - curY);
+                if (dead < bestDead || (dead === bestDead && move < bestMove)) {
+                    bestDead = dead; bestMove = move; best = { x: cx, y: cy };
+                }
+            }
+        }
+        return best;
+    }
+
+    // Animasi partner bergeser halus ke target.
+    let followTarget = null, followEl = null, followRaf = null;
+    function stepFollow() {
+        followRaf = null;
+        if (!followTarget || !followEl) return;
+        if (drag === followEl) { followTarget = null; return; } // pemain diambil alih user
+        const cx = +followEl.getAttribute("cx"), cy = +followEl.getAttribute("cy");
+        const dx = followTarget.x - cx, dy = followTarget.y - cy;
+        const d = Math.hypot(dx, dy);
+        if (d < 0.5) {
+            followEl.setAttribute("cx", followTarget.x);
+            followEl.setAttribute("cy", followTarget.y);
+            drawAndEnforce();
+            followTarget = null;
+            return;
+        }
+        followEl.setAttribute("cx", cx + dx * 0.22);
+        followEl.setAttribute("cy", cy + dy * 0.22);
+        drawAndEnforce();
+        followRaf = requestAnimationFrame(stepFollow);
+    }
+    function setFollowTarget(el, pos) {
+        followEl = el;
+        followTarget = pos;
+        if (followRaf === null) followRaf = requestAnimationFrame(stepFollow);
+    }
+
     // Drag dihaluskan: posisi pointer terakhir disimpan, perhitungan berat
     // (klasifikasi seluruh grid) hanya dijalankan sekali per frame (rAF).
     let pendingEvt = null;
@@ -330,6 +481,12 @@
 
         drag.setAttribute("cx", newPos.x);
         drag.setAttribute("cy", newPos.y);
+
+        // Mode "Ikuti Partner": partner otomatis menutup deadzone.
+        if (followMode) {
+            const partner = teammateOf(drag);
+            setFollowTarget(partner, bestPartnerPos(newPos.x, newPos.y, partner));
+        }
         drawAndEnforce();
     }
 
