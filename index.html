@@ -5,16 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Badminton Coverage (Dinamis)</title>
     <style>
-        html, body {
+        html { height: 100%; }
+        body {
             margin: 0;
-            height: 100%;
+            min-height: 100%;
+            background: #ddd;
+            font-family: Arial, sans-serif;
+        }
+        /* Lapangan lalu panel kontrol langsung nempel di bawahnya, satu alur scroll biasa. */
+        .page {
+            position: relative;
             display: flex;
             justify-content: center;
             align-items: center;
-            background: #ddd;
-            font-family: Arial, sans-serif;
-            overflow: hidden;
         }
+        #page1 { height: 100dvh; background: #fff; overflow: hidden; }
+        #courtWrap { display: contents; }
         svg {
             background: white;
             touch-action: none;
@@ -23,34 +29,154 @@
             height: 100dvh;
             max-width: 100vw;
             width: auto;
+            aspect-ratio: 246 / 538; /* rasio viewBox, agar tidak letterbox */
         }
         .hit { fill: transparent; stroke: none; cursor: grab; } /* target sentuh besar utk jari */
         .player { cursor: grab; }
         .player:active { cursor: grabbing; }
         .court-line { stroke: #000; stroke-width: 1.5; }
+        .pname {
+            font-size: 6.5px; font-weight: bold; font-family: Arial, sans-serif;
+            text-anchor: middle; user-select: none; pointer-events: none;
+        }
+        #targetMarks .tm { cursor: pointer; pointer-events: all; }
+        #targetMarks .tm.chosen { stroke: #060; }
+        #targetMarks .tm.chosen text { fill: #060; }
+        /* Saat fase memilih (5 dtk), X berkedip 5 kali */
+        @keyframes blinkX { 0%, 100% { opacity: 1; } 50% { opacity: 0.1; } }
+        #targetMarks.blink .tm { animation: blinkX 1s linear 5; }
 
-        /* Tombol mode di atas layar */
+        /* Tombol mode kecil di kanan atas (di dalam lapangan) */
         #modeBar {
-            position: fixed;
-            top: 8px;
-            left: 50%;
-            transform: translateX(-50%);
+            position: absolute;
+            top: 6px;
+            right: 6px;
             display: flex;
-            gap: 6px;
+            flex-direction: column;
+            gap: 4px;
             z-index: 5;
         }
         #modeBar button {
-            font-size: 13px;
-            padding: 6px 14px;
+            font-size: 10px;
+            padding: 3px 8px;
             border: 1px solid #888;
-            border-radius: 16px;
-            background: rgba(255,255,255,0.9);
+            border-radius: 10px;
+            background: rgba(255,255,255,0.85);
             cursor: pointer;
         }
         #modeBar button.active {
             background: #1a5c1a;
             color: #fff;
             border-color: #1a5c1a;
+        }
+
+        /* Legend kecil di kiri atas (di dalam lapangan) */
+        #legend {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            background: rgba(255,255,255,0.8);
+            border: 1px solid #aaa;
+            border-radius: 6px;
+            padding: 3px 6px;
+            font-size: 9px;
+            line-height: 1.6;
+            z-index: 5;
+        }
+        #legend .row { display: flex; align-items: center; gap: 4px; }
+        #legend .sw {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            border: 1px solid #888;
+            flex: none;
+        }
+
+        /* Tombol Play/Stop simulasi di kanan bawah */
+        #playBtn {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            border: 1px solid #666;
+            background: rgba(26,92,26,0.92);
+            color: #fff;
+            font-size: 18px;
+            cursor: pointer;
+            z-index: 5;
+        }
+        #playBtn.playing { background: rgba(180,30,30,0.92); }
+
+        /* Tombol Pause/Lanjut di kiri bawah, muncul hanya saat simulasi berjalan */
+        #pauseBtn {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            border: 1px solid #666;
+            background: rgba(200,140,0,0.92);
+            color: #fff;
+            font-size: 18px;
+            cursor: pointer;
+            z-index: 5;
+            display: none;
+        }
+        #pauseBtn.paused { background: rgba(26,92,26,0.92); }
+
+        /* Page 2: panel kontrol pemain, nempel langsung di bawah lapangan */
+        #page2 { background: #eee; padding: 14px 0 24px; }
+        #controls {
+            width: min(340px, 92vw);
+            background: #fff;
+            border-radius: 12px;
+            padding: 14px 16px 16px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+            font-size: 12px;
+        }
+        #controls h2 { margin: 0 0 8px; font-size: 15px; }
+        #controls .group {
+            margin: 10px 0 4px;
+            font-weight: bold;
+            color: #333;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 2px;
+        }
+        #controls .ctl {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 4px 0;
+        }
+        #controls .ctl label {
+            flex: 0 0 108px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        #controls .dot {
+            width: 9px; height: 9px; border-radius: 50%;
+            display: inline-block; border: 1px solid #555; flex: none;
+        }
+        #controls input[type=range] { flex: 1 1 auto; min-width: 0; }
+        #controls input[type=text] {
+            flex: 1 1 auto; min-width: 0;
+            font-size: 12px; padding: 3px 6px;
+            border: 1px solid #bbb; border-radius: 6px;
+        }
+        #controls .val { flex: 0 0 34px; text-align: right; font-variant-numeric: tabular-nums; }
+        #resetBtn {
+            margin-top: 12px;
+            width: 100%;
+            padding: 7px 0;
+            font-size: 13px;
+            border: 1px solid #888;
+            border-radius: 8px;
+            background: #f4f4f4;
+            cursor: pointer;
         }
 
         /* Panduan awal */
@@ -91,9 +217,10 @@
         <button id="introOk">OK</button>
     </div>
 </div>
+<section class="page" id="page1">
 <div id="modeBar">
-    <button id="modeFree" class="active">Bebas</button>
-    <button id="modeFollow">Ikuti Partner</button>
+    <button id="modeFree">Bebas</button>
+    <button id="modeFollow" class="active">Ikuti Partner</button>
 </div>
 <!--
   Skala: 40 px = 1 meter. Lapangan ganda nyata 6,10 m x 13,40 m.
@@ -101,7 +228,8 @@
   Koordinat meter: x = 0..6,10 (kiri->kanan), y = 0 (baseline dekat, bawah) .. 13,40 (baseline jauh, atas).
 -->
 <!-- viewBox di-crop pas ke tepi lapangan (44..288 x 24..560, +1px utk tebal garis) -->
-<svg id="court" width="246" height="538" viewBox="43 23 246 538">
+<div id="courtWrap">
+<svg id="court" viewBox="43 23 246 538">
     <!-- Area coverage digambar sebagai sel grid (warna diredupkan) -->
     <path id="greenArea" fill="rgba(0,180,0,0.16)" stroke="none"/>
     <path id="blueArea" fill="rgba(50,100,255,0.16)" stroke="none"/>
@@ -150,17 +278,117 @@
         <line x1="11.2" y1="-1.4" x2="17.5" y2="-12.6" stroke="#333" stroke-width="1.4"/>
         <ellipse cx="19.6" cy="-17.5" rx="4.5" ry="6.7" fill="none" stroke="#333" stroke-width="1.4" transform="rotate(25 19.6 -17.5)"/>
     </g>
-    <!-- Kepala (anchor posisi drag) -->
-    <circle id="green" class="player" cx="148" cy="400" r="6.3" fill="#1a5c1a" stroke="#000" stroke-width="1.1"/>
-    <circle id="blue" class="player" cx="184" cy="472" r="6.3" fill="#2a4fa8" stroke="#000" stroke-width="1.1"/>
-    <circle id="purple" class="player" cx="148" cy="184" r="6.3" fill="#6b2f99" stroke="#000" stroke-width="1.1"/>
-    <circle id="yellow" class="player" cx="184" cy="112" r="6.3" fill="#b38f00" stroke="#000" stroke-width="1.1"/>
+    <!-- Label koordinat (meter), teks kecil untuk memudahkan komunikasi -->
+    <g id="coordLabels" font-size="4.6" fill="#777"></g>
+
+    <!-- Penanda pemain yang servis (cincin putih) -->
+    <circle id="serverMark" r="9.5" fill="none" stroke="#fff" stroke-width="1.6" style="display:none"/>
+
+    <!-- Kepala (anchor posisi drag). Default: hijau kotak kanan, biru kiri. -->
+    <circle id="green" class="player" cx="227" cy="440" r="6.3" fill="#1a5c1a" stroke="#000" stroke-width="1.1"/>
+    <circle id="blue" class="player" cx="105" cy="440" r="6.3" fill="#2a4fa8" stroke="#000" stroke-width="1.1"/>
+    <circle id="purple" class="player" cx="227" cy="144" r="6.3" fill="#6b2f99" stroke="#000" stroke-width="1.1"/>
+    <circle id="yellow" class="player" cx="105" cy="144" r="6.3" fill="#b38f00" stroke="#000" stroke-width="1.1"/>
     <!-- Lingkaran transparan lebih besar sebagai target sentuh di HP -->
-    <circle id="greenHit" class="hit" cx="148" cy="400" r="26"/>
-    <circle id="blueHit" class="hit" cx="184" cy="472" r="26"/>
-    <circle id="purpleHit" class="hit" cx="148" cy="184" r="26"/>
-    <circle id="yellowHit" class="hit" cx="184" cy="112" r="26"/>
+    <circle id="greenHit" class="hit" cx="227" cy="440" r="26"/>
+    <circle id="blueHit" class="hit" cx="105" cy="440" r="26"/>
+    <circle id="purpleHit" class="hit" cx="227" cy="144" r="26"/>
+    <circle id="yellowHit" class="hit" cx="105" cy="144" r="26"/>
+
+    <!-- Nama pemain di bawah figur -->
+    <text id="greenName" class="pname" fill="#1a5c1a">Mr. Fauzan</text>
+    <text id="blueName" class="pname" fill="#2a4fa8">Food</text>
+    <text id="purpleName" class="pname" fill="#6b2f99">DyAndy</text>
+    <text id="yellowName" class="pname" fill="#b38f00">Mr. Ade</text>
+
+    <!-- Kok (shuttlecock) + garis jejak tipis -->
+    <line id="shuttleTrail" x1="0" y1="0" x2="0" y2="0" stroke="#000" stroke-width="0.35" opacity="0.55" style="display:none"/>
+    <circle id="shuttle" r="2.4" fill="#000" style="display:none"/>
+
+    <!-- 3 tanda X kandidat tujuan kok + persentase; tampil 1,5 dtk sebelum bola dibalikin.
+         Bisa di-tap untuk memilih sendiri tujuannya. -->
+    <g id="targetMarks" style="display:none">
+        <g class="tm" stroke="#d00" stroke-width="1.4" stroke-linecap="round">
+            <circle r="12" fill="transparent" stroke="none"/>
+            <line x1="-4" y1="-4" x2="4" y2="4"/>
+            <line x1="-4" y1="4" x2="4" y2="-4"/>
+            <text y="-6" text-anchor="middle" stroke="none" fill="#d00" font-size="7" font-weight="bold"></text>
+        </g>
+        <g class="tm" stroke="#d00" stroke-width="1.4" stroke-linecap="round">
+            <circle r="12" fill="transparent" stroke="none"/>
+            <line x1="-4" y1="-4" x2="4" y2="4"/>
+            <line x1="-4" y1="4" x2="4" y2="-4"/>
+            <text y="-6" text-anchor="middle" stroke="none" fill="#d00" font-size="7" font-weight="bold"></text>
+        </g>
+        <g class="tm" stroke="#d00" stroke-width="1.4" stroke-linecap="round">
+            <circle r="12" fill="transparent" stroke="none"/>
+            <line x1="-4" y1="-4" x2="4" y2="4"/>
+            <line x1="-4" y1="4" x2="4" y2="-4"/>
+            <text y="-6" text-anchor="middle" stroke="none" fill="#d00" font-size="7" font-weight="bold"></text>
+        </g>
+        <g class="tm" stroke="#d00" stroke-width="1.4" stroke-linecap="round">
+            <circle r="12" fill="transparent" stroke="none"/>
+            <line x1="-4" y1="-4" x2="4" y2="4"/>
+            <line x1="-4" y1="4" x2="4" y2="-4"/>
+            <text y="-6" text-anchor="middle" stroke="none" fill="#d00" font-size="7" font-weight="bold"></text>
+        </g>
+        <g class="tm" stroke="#d00" stroke-width="1.4" stroke-linecap="round">
+            <circle r="12" fill="transparent" stroke="none"/>
+            <line x1="-4" y1="-4" x2="4" y2="4"/>
+            <line x1="-4" y1="4" x2="4" y2="-4"/>
+            <text y="-6" text-anchor="middle" stroke="none" fill="#d00" font-size="7" font-weight="bold"></text>
+        </g>
+    </g>
 </svg>
+</div>
+<div id="legend">
+    <div class="row"><span class="sw" style="background:
+        linear-gradient(90deg, rgba(0,180,0,0.45) 0 25%, rgba(50,100,255,0.45) 25% 50%, rgba(140,60,200,0.45) 50% 75%, rgba(235,190,0,0.55) 75% 100%);"></span>
+        Area jangkauan / tanggung jawab</div>
+    <div class="row"><span class="sw" style="background: rgba(200,0,0,0.55);"></span>
+        Area deadzone</div>
+</div>
+<button id="playBtn" title="Mulai/hentikan simulasi">&#9654;</button>
+<button id="pauseBtn" title="Jeda/lanjutkan simulasi">&#10074;&#10074;</button>
+</section>
+
+<section class="page" id="page2">
+    <div id="controls">
+        <h2>Kontrol Pemain</h2>
+
+        <div class="group">Kecepatan pemain (x normal)</div>
+        <div class="ctl"><label><span class="dot" style="background:#1a5c1a"></span>Hijau</label>
+            <input type="range" id="spdGreen" min="0.5" max="1.5" step="0.05" value="0.9"><span class="val" id="spdGreenV">0.90</span></div>
+        <div class="ctl"><label><span class="dot" style="background:#2a4fa8"></span>Biru</label>
+            <input type="range" id="spdBlue" min="0.5" max="1.5" step="0.05" value="0.9"><span class="val" id="spdBlueV">0.90</span></div>
+        <div class="ctl"><label><span class="dot" style="background:#6b2f99"></span>Ungu</label>
+            <input type="range" id="spdPurple" min="0.5" max="1.5" step="0.05" value="0.9"><span class="val" id="spdPurpleV">0.90</span></div>
+        <div class="ctl"><label><span class="dot" style="background:#b38f00"></span>Kuning</label>
+            <input type="range" id="spdYellow" min="0.5" max="1.5" step="0.05" value="0.9"><span class="val" id="spdYellowV">0.90</span></div>
+
+        <div class="group">Model gerak (berlaku semua pemain)</div>
+        <div class="ctl"><label>Waktu reaksi (dtk)</label>
+            <input type="range" id="ctlReact" min="0.05" max="0.5" step="0.01" value="0.29"><span class="val" id="ctlReactV">0.29</span></div>
+        <div class="ctl"><label>Kecepatan lari (m/s)</label>
+            <input type="range" id="ctlSpeed" min="3" max="6" step="0.1" value="5.0"><span class="val" id="ctlSpeedV">5.0</span></div>
+        <div class="ctl"><label>Jangkauan maks (m)</label>
+            <input type="range" id="ctlReach" min="2" max="6" step="0.1" value="2.9"><span class="val" id="ctlReachV">2.9</span></div>
+        <div class="ctl"><label>Efek titik buta</label>
+            <input type="range" id="ctlBlind" min="0" max="1" step="0.05" value="0.4"><span class="val" id="ctlBlindV">0.40</span></div>
+
+        <button id="resetBtn">Reset posisi pemain</button>
+
+        <div class="group">Nama pemain</div>
+        <div class="ctl"><label><span class="dot" style="background:#1a5c1a"></span>Hijau (G)</label>
+            <input type="text" id="nameGreen" value="Mr. Fauzan" maxlength="14"></div>
+        <div class="ctl"><label><span class="dot" style="background:#2a4fa8"></span>Biru (B)</label>
+            <input type="text" id="nameBlue" value="Food" maxlength="14"></div>
+        <div class="ctl"><label><span class="dot" style="background:#6b2f99"></span>Ungu (P)</label>
+            <input type="text" id="namePurple" value="DyAndy" maxlength="14"></div>
+        <div class="ctl"><label><span class="dot" style="background:#b38f00"></span>Kuning (Y)</label>
+            <input type="text" id="nameYellow" value="Mr. Ade" maxlength="14"></div>
+    </div>
+</section>
 
 <script>
 (function() {
@@ -191,17 +419,23 @@
     const CELL = 3; // resolusi sel grid (px). Makin kecil makin akurat batas areanya.
 
     // --- Model gerak manusia (satuan nyata: meter & detik) ---
-    const T_REACT   = 0.18;  // waktu reaksi sebelum mulai bergerak (detik)
-    const V_NOMINAL = 4.5;   // kecepatan puncak (m/detik)
+    // Nilai-nilai ini bisa diubah lewat panel "Kontrol Pemain" (scroll ke bawah).
+    let T_REACT   = 0.29;    // waktu reaksi sebelum mulai bergerak (detik)
+    let V_NOMINAL = 5.0;     // kecepatan puncak (m/detik)
     const A_NOMINAL = 12;    // percepatan (m/detik^2): tidak langsung ngebut
     const DIR_MAX_EXTRA = 3; // biaya arah maksimum di belakang penuh
-    const SPEED = 1;         // kedua pemain kecepatan sama
     const FACE_DEG = 0;      // menghadap net
-    const MAX_REACH_M = 4.0; // jangkauan maksimal (meter)
-    const BLIND = 0.40;      // efek titik buta
+    let MAX_REACH_M = 2.9;   // jangkauan maksimal (meter)
+    let BLIND = 0.40;        // efek titik buta
+
+    // Pengali kecepatan per pemain (diatur slider di page kontrol).
+    const playerSpeed = { green: 0.9, blue: 0.9, purple: 0.9, yellow: 0.9 };
+    function spdOf(p) { return playerSpeed[p.id]; }
 
     let drag = null;
-    let followMode = false;
+    let followMode = true; // default: mode "Ikuti Partner"
+    let simRunning = false; // simulasi permainan (tombol Play) sedang berjalan
+    let server = null;      // pemain yang servis (hijau/kuning), di-set setelah elemen siap
 
     // --- UI: panduan awal & tombol mode ---
     document.getElementById("introOk").addEventListener("click", () => {
@@ -216,6 +450,26 @@
     }
     modeFreeBtn.addEventListener("click", () => setMode(false));
     modeFollowBtn.addEventListener("click", () => setMode(true));
+
+    // Label koordinat meter (kecil): x = 0..6,1 kiri->kanan, y = 0..13,4 bawah->atas.
+    (function makeCoordLabels() {
+        const g = document.getElementById("coordLabels");
+        const NS = "http://www.w3.org/2000/svg";
+        for (let m = 1; m <= 13; m++) {
+            const t = document.createElementNS(NS, "text");
+            t.setAttribute("x", 45.5);
+            t.setAttribute("y", 560 - m * 40 + 1.6);
+            t.textContent = m;
+            g.appendChild(t);
+        }
+        for (let m = 1; m <= 6; m++) {
+            const t = document.createElementNS(NS, "text");
+            t.setAttribute("x", 44 + m * 40 - 2.4);
+            t.setAttribute("y", 557.5);
+            t.textContent = m;
+            g.appendChild(t);
+        }
+    })();
 
     function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
     function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
@@ -268,7 +522,7 @@
     // Klasifikasi satu setengah lapangan untuk sepasang pemain (A, B).
     // faceDeg: arah hadap net pasangan itu (0 = tim bawah, 180 = tim atas).
     // Mengembalikan path area A, area B, dead zone, dan garis batas.
-    function classifyHalf(ax, ay, bx, by, faceDeg, y0Half, y1Half, timeBudget) {
+    function classifyHalf(ax, ay, bx, by, faceDeg, y0Half, y1Half, timeBudget, sA, sB) {
         let aPath = "", bPath = "", deadPath = "";
         const nCols = Math.ceil((RECT_X1 - RECT_X0) / CELL);
         const nRows = Math.ceil((y1Half - y0Half) / CELL);
@@ -283,8 +537,8 @@
                 const xMid = x + CELL / 2;
                 const x1 = Math.min(x + CELL, RECT_X1);
 
-                const tA = arrivalTime(xMid, yMid, ax, ay, SPEED, faceDeg, BLIND);
-                const tB = arrivalTime(xMid, yMid, bx, by, SPEED, faceDeg, BLIND);
+                const tA = arrivalTime(xMid, yMid, ax, ay, sA, faceDeg, BLIND);
+                const tB = arrivalTime(xMid, yMid, bx, by, sB, faceDeg, BLIND);
                 const reachA = tA <= timeBudget;
                 const reachB = tB <= timeBudget;
 
@@ -328,8 +582,8 @@
         const timeBudget = T_REACT + travelTime(MAX_REACH_M, V_NOMINAL, A_NOMINAL);
 
         // Setengah bawah: green/blue (hadap net = 0°). Setengah atas: purple/yellow (180°).
-        const near = classifyHalf(gx, gy, bx, by, FACE_DEG, RECT_Y0, RECT_Y1, timeBudget);
-        const far  = classifyHalf(px_, py_, yx, yy, FACE_DEG + 180, FAR_Y0, FAR_Y1, timeBudget);
+        const near = classifyHalf(gx, gy, bx, by, FACE_DEG, RECT_Y0, RECT_Y1, timeBudget, spdOf(green), spdOf(blue));
+        const far  = classifyHalf(px_, py_, yx, yy, FACE_DEG + 180, FAR_Y0, FAR_Y1, timeBudget, spdOf(purple), spdOf(yellow));
 
         greenArea.setAttribute("d", near.aPath);
         blueArea.setAttribute("d", near.bPath);
@@ -343,12 +597,31 @@
         updateBody(purpleBody, px_, py_, FACE_DEG + 180);
         updateBody(yellowBody, yx, yy, FACE_DEG + 180);
 
+        // Cincin penanda pemain yang servis.
+        const sm = document.getElementById("serverMark");
+        sm.style.display = "";
+        sm.setAttribute("cx", +server.getAttribute("cx"));
+        sm.setAttribute("cy", +server.getAttribute("cy"));
+
         // Lingkaran hit mengikuti posisi pemain.
         greenHit.setAttribute("cx", gx); greenHit.setAttribute("cy", gy);
         blueHit.setAttribute("cx", bx); blueHit.setAttribute("cy", by);
         purpleHit.setAttribute("cx", px_); purpleHit.setAttribute("cy", py_);
         yellowHit.setAttribute("cx", yx); yellowHit.setAttribute("cy", yy);
+
+        // Nama pemain mengikuti posisi (di bawah figur), di-clamp agar tak keluar tepi.
+        const nameX = v => clamp(v, 60, 272);
+        setName(greenName, nameX(gx), gy + 15);
+        setName(blueName, nameX(bx), by + 15);
+        setName(purpleName, nameX(px_), py_ + 15);
+        setName(yellowName, nameX(yx), yy + 15);
     }
+
+    const greenName = document.getElementById("greenName");
+    const blueName = document.getElementById("blueName");
+    const purpleName = document.getElementById("purpleName");
+    const yellowName = document.getElementById("yellowName");
+    function setName(el, x, y) { el.setAttribute("x", x); el.setAttribute("y", y); }
 
     // Drag lewat lingkaran hit yang lebih besar (ramah jari di HP).
     const greenHit = document.getElementById("greenHit");
@@ -369,14 +642,25 @@
             ? { y0: RECT_Y0 + 5, y1: RECT_Y1 - 8 }
             : { y0: FAR_Y0 + 8, y1: FAR_Y1 - 5 };
     }
+    let downPos = null; // untuk membedakan tap (pilih server) dan drag
     hitPairs.forEach(([hit, p]) => {
         hit.addEventListener("pointerdown", e => {
+            if (simRunning) return; // saat simulasi jalan, pemain tidak bisa digeser
             drag = p;
+            downPos = { x: e.clientX, y: e.clientY };
             hit.setPointerCapture(e.pointerId);
             e.preventDefault();
         });
-        hit.addEventListener("pointerup", () => { drag = null; });
-        hit.addEventListener("pointercancel", () => { drag = null; });
+        hit.addEventListener("pointerup", e => {
+            // Tap singkat pada hijau/kuning = pilih pemain yang servis.
+            if (downPos && Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) < 6
+                && (p === green || p === yellow) && !simRunning) {
+                server = p;
+                drawAndEnforce();
+            }
+            drag = null; downPos = null;
+        });
+        hit.addEventListener("pointercancel", () => { drag = null; downPos = null; });
     });
     window.addEventListener("pointerup", () => { drag = null; });
 
@@ -392,7 +676,7 @@
     }
 
     // Posisi partner terbaik: deadzone minimum; seri -> paling dekat posisi partner sekarang.
-    function bestPartnerPos(fixedX, fixedY, partner) {
+    function bestPartnerPos(fixedX, fixedY, partner, fixedSpd) {
         const h = halfOf(partner);
         const hb = halfBoundsOf(partner);
         const timeBudget = T_REACT + travelTime(MAX_REACH_M, V_NOMINAL, A_NOMINAL);
@@ -402,7 +686,7 @@
         const cells = [];
         for (let y = h.y0 + FOLLOW_EVAL_CELL / 2; y < h.y1; y += FOLLOW_EVAL_CELL) {
             for (let x = RECT_X0 + FOLLOW_EVAL_CELL / 2; x < RECT_X1; x += FOLLOW_EVAL_CELL) {
-                if (arrivalTime(x, y, fixedX, fixedY, SPEED, h.face, BLIND) > timeBudget)
+                if (arrivalTime(x, y, fixedX, fixedY, fixedSpd, h.face, BLIND) > timeBudget)
                     cells.push(x, y);
             }
         }
@@ -413,7 +697,7 @@
                 if (Math.hypot(cx - fixedX, cy - fixedY) < 24) continue;
                 let dead = 0;
                 for (let i = 0; i < cells.length; i += 2) {
-                    if (arrivalTime(cells[i], cells[i + 1], cx, cy, SPEED, h.face, BLIND) > timeBudget)
+                    if (arrivalTime(cells[i], cells[i + 1], cx, cy, spdOf(partner), h.face, BLIND) > timeBudget)
                         dead++;
                 }
                 const move = Math.hypot(cx - curX, cy - curY);
@@ -485,7 +769,7 @@
         // Mode "Ikuti Partner": partner otomatis menutup deadzone.
         if (followMode) {
             const partner = teammateOf(drag);
-            setFollowTarget(partner, bestPartnerPos(newPos.x, newPos.y, partner));
+            setFollowTarget(partner, bestPartnerPos(newPos.x, newPos.y, partner, spdOf(drag)));
         }
         drawAndEnforce();
     }
@@ -496,6 +780,288 @@
         if (rafId === null) rafId = requestAnimationFrame(processMove);
     });
 
+    // ================= Simulasi permainan (tombol Play) =================
+    // Reli otomatis: servis pendek diagonal -> pengembalian selalu diarahkan ke
+    // deadzone terbesar lawan -> penerima mengejar, partnernya mode following.
+    const shuttleEl = document.getElementById("shuttle");
+    const trailEl = document.getElementById("shuttleTrail");
+    const targetMarksEl = document.getElementById("targetMarks");
+    const targetMarkItems = targetMarksEl.querySelectorAll(".tm");
+    const playBtn = document.getElementById("playBtn");
+    const pauseBtn = document.getElementById("pauseBtn");
+
+    let simRaf = null, lastTs = 0;
+    let flight = null;   // penerbangan kok: {x0,y0,x1,y1,dur,t}
+    let landing = null;  // titik jatuh kok terakhir
+    let pauseLeft = 0;   // jeda sebelum pukulan berikutnya (1,5 dtk: waktu lihat/pilih X)
+    let idleTime = 0;    // pengaman bila animasi tersendat
+    let pendingCands = null;  // kandidat X yang sedang ditampilkan saat jeda
+    let pendingChoice = null; // X yang dipilih pengguna lewat tap (kalau ada)
+    const simTargets = new Map(); // target lari tiap pemain
+
+    // Tap salah satu X saat jeda = paksa bola dikembalikan ke situ.
+    targetMarkItems.forEach((el, i) => {
+        el.addEventListener("pointerdown", e => {
+            if (!simRunning || !pendingCands || !pendingCands[i]) return;
+            pendingChoice = pendingCands[i];
+            targetMarkItems.forEach(m => m.classList.remove("chosen"));
+            el.classList.add("chosen");
+            e.stopPropagation();
+        });
+    });
+
+    function sideOf(y) { return y > NET_Y ? "near" : "far"; }
+    function pairOf(side) { return side === "near" ? [green, blue] : [purple, yellow]; }
+    function faceOf(side) { return side === "near" ? FACE_DEG : FACE_DEG + 180; }
+    function posOf(p) { return { x: +p.getAttribute("cx"), y: +p.getAttribute("cy") }; }
+
+    // Titik di setengah lapangan `side` yang paling sulit dijangkau pasangannya
+    // (skor = waktu tiba tercepat dari kedua pemain; makin besar = makin "dead").
+    function pickDeadTarget(side) {
+        const [A, B] = pairOf(side);
+        const a = posOf(A), b = posOf(B);
+        const face = faceOf(side);
+        const y0 = (side === "near" ? RECT_Y0 : FAR_Y0) + 10;
+        const y1 = (side === "near" ? RECT_Y1 : FAR_Y1) - 8;
+        const cands = [];
+        for (let y = y0; y <= y1; y += 10) {
+            for (let x = RECT_X0 + 8; x <= RECT_X1 - 8; x += 10) {
+                const s = Math.min(
+                    arrivalTime(x, y, a.x, a.y, spdOf(A), face, BLIND),
+                    arrivalTime(x, y, b.x, b.y, spdOf(B), face, BLIND));
+                cands.push({ x, y, s });
+            }
+        }
+        cands.sort((p, q) => q.s - p.s);
+        // Ambil 5 kandidat terbaik yang saling berjauhan (biar tak numpuk di satu titik).
+        const picked = [];
+        for (const c of cands) {
+            if (picked.every(p => Math.hypot(p.x - c.x, p.y - c.y) > 42)) picked.push(c);
+            if (picked.length === 5) break;
+        }
+        // Persentase peluang dari skor "kematian" relatif tiap kandidat.
+        const sum = picked.reduce((acc, p) => acc + p.s, 0);
+        picked.forEach(p => p.pct = Math.round(p.s / sum * 100));
+        return picked;
+    }
+
+    // Tampilkan tanda-tanda X kandidat + persentasenya (tanpa memilih).
+    function showMarks(cands) {
+        targetMarksEl.classList.remove("blink"); // kedip hanya saat fase memilih
+        targetMarkItems.forEach((el, i) => {
+            const c = cands[i];
+            el.classList.remove("chosen");
+            if (!c) { el.style.display = "none"; return; }
+            el.style.display = "";
+            el.setAttribute("transform", `translate(${c.x},${c.y})`);
+            el.querySelector("text").textContent = `${c.pct}%`;
+        });
+        targetMarksEl.style.display = "";
+    }
+
+    // Pilih satu target secara acak berbobot persentasenya.
+    function weightedPick(cands) {
+        let roll = Math.random() * cands.reduce((a, c) => a + c.pct, 0);
+        for (const c of cands) { roll -= c.pct; if (roll <= 0) return c; }
+        return cands[0];
+    }
+
+    // Mulai satu pukulan: kok terbang dari `from` ke `to`; penerima lari ke titik
+    // jatuh, partnernya reposisi menutup deadzone (following).
+    function startShot(from, to) {
+        const dM = Math.hypot(to.x - from.x, to.y - from.y) / PPM;
+        const speed = 3.5 + Math.random() * 1.5; // kok pelan saja (m/s)
+        flight = { x0: from.x, y0: from.y, x1: to.x, y1: to.y, dur: Math.max(0.35, dM / speed), t: 0 };
+        trailEl.setAttribute("x1", from.x); trailEl.setAttribute("y1", from.y);
+        trailEl.setAttribute("x2", from.x); trailEl.setAttribute("y2", from.y);
+        trailEl.style.display = ""; shuttleEl.style.display = "";
+
+        // Pemukul (pemain terdekat ke titik pukul) bergerak pelan kembali ke
+        // posisi paling ideal (menutup deadzone) setelah melepas pukulan.
+        const fromSide = sideOf(from.y);
+        const [FA, FB] = pairOf(fromSide);
+        const fa = posOf(FA), fb = posOf(FB);
+        const striker = Math.hypot(fa.x - from.x, fa.y - from.y) <= Math.hypot(fb.x - from.x, fb.y - from.y) ? FA : FB;
+        const strikerMate = teammateOf(striker);
+        const matePos = posOf(strikerMate);
+        const ideal = bestPartnerPos(matePos.x, matePos.y, striker, spdOf(strikerMate));
+        simTargets.set(striker, { x: ideal.x, y: ideal.y, slow: true });
+
+        const side = sideOf(to.y);
+        const [A, B] = pairOf(side);
+        const a = posOf(A), b = posOf(B);
+        const face = faceOf(side);
+        const tA = arrivalTime(to.x, to.y, a.x, a.y, spdOf(A), face, BLIND);
+        const tB = arrivalTime(to.x, to.y, b.x, b.y, spdOf(B), face, BLIND);
+        const hitter = tA <= tB ? A : B;
+        const partner = teammateOf(hitter);
+        simTargets.set(hitter, { x: to.x, y: to.y });
+        simTargets.set(partner, bestPartnerPos(to.x, to.y, partner, spdOf(hitter)));
+    }
+
+    // Servis pendek: diagonal ke kotak servis seberang, jatuh sedikit melewati
+    // garis servis pendek penerima (aturan bulu tangkis).
+    function startServe() {
+        const sp = posOf(server);
+        const sSide = sideOf(sp.y);
+        const toLeftBox = sp.x > 166; // diagonal: kotak kanan -> kotak kiri seberang
+        const tx = (toLeftBox ? 114 : 218) + (Math.random() * 36 - 18);
+        const ty = sSide === "near"
+            ? 212.8 - (5 + Math.random() * 14)   // sisi jauh: sedikit di atas garis servis pendek
+            : 371.2 + (5 + Math.random() * 14);  // sisi dekat: sedikit di bawahnya
+        const target = { x: clamp(tx, 68, 264), y: ty, s: 1, pct: 100 };
+        showMarks([target]);
+        startShot(sp, target);
+    }
+
+    function simStep(ts) {
+        if (!simRunning) return;
+        const dt = Math.min(0.05, (ts - lastTs) / 1000 || 0.016);
+        lastTs = ts;
+
+        // Gerakkan pemain menuju targetnya (kecepatan manusiawi).
+        simTargets.forEach((t, p) => {
+            const c = posOf(p);
+            const dx = t.x - c.x, dy = t.y - c.y;
+            const d = Math.hypot(dx, dy);
+            if (d < 1) { simTargets.delete(p); return; }
+            // Target "slow" = jalan santai kembali ke posisi ideal (40% kecepatan).
+            const factor = t.slow ? 0.4 : 1;
+            const step = Math.min(d, V_NOMINAL * PPM * spdOf(p) * factor * dt);
+            p.setAttribute("cx", c.x + dx / d * step);
+            p.setAttribute("cy", c.y + dy / d * step);
+        });
+
+        if (flight) {
+            flight.t += dt;
+            const k = Math.min(1, flight.t / flight.dur);
+            const sx = flight.x0 + (flight.x1 - flight.x0) * k;
+            const sy = flight.y0 + (flight.y1 - flight.y0) * k;
+            shuttleEl.setAttribute("cx", sx); shuttleEl.setAttribute("cy", sy);
+            trailEl.setAttribute("x2", sx); trailEl.setAttribute("y2", sy);
+            if (k >= 1) {
+                landing = { x: flight.x1, y: flight.y1 };
+                flight = null;
+                // Kok mendarat: tampilkan 3 kandidat X pengembalian yang berkedip
+                // 5 kali, jeda 5 dtk untuk melihat / memilih (tap salah satu X).
+                const nextSide = sideOf(landing.y) === "near" ? "far" : "near";
+                pendingCands = pickDeadTarget(nextSide);
+                pendingChoice = null;
+                showMarks(pendingCands);
+                targetMarksEl.classList.add("blink");
+                pauseLeft = 5;
+            }
+        } else if (pauseLeft > 0) {
+            pauseLeft -= dt;
+            if (pauseLeft <= 0 && landing) {
+                const target = pendingChoice || (pendingCands ? weightedPick(pendingCands) : null);
+                pendingCands = null; pendingChoice = null;
+                if (target) {
+                    showMarks([target]); // selama terbang, sisakan X tujuan terpilih saja
+                    startShot(landing, target);
+                }
+            }
+        } else {
+            // Pengaman: kalau karena suatu hal kok menganggur (mis. browser
+            // sempat menghentikan animasi saat layar mati), servis ulang.
+            idleTime += dt;
+            if (idleTime > 1.2) { idleTime = 0; startServe(); }
+        }
+
+        drawAndEnforce();
+        simRaf = requestAnimationFrame(simStep);
+    }
+
+    let simPaused = false;
+
+    function startSim() {
+        simRunning = true;
+        simPaused = false;
+        drag = null;
+        playBtn.classList.add("playing");
+        playBtn.innerHTML = "&#9632;"; // stop
+        pauseBtn.style.display = "block";
+        pauseBtn.classList.remove("paused");
+        pauseBtn.innerHTML = "&#10074;&#10074;"; // pause
+        lastTs = 0;
+        startServe();
+        simRaf = requestAnimationFrame(simStep);
+    }
+
+    // Pause: bekukan simulasi apa adanya (kok, target, posisi tetap); lanjut meneruskan.
+    function pauseSim() {
+        if (!simRunning) return;
+        simPaused = !simPaused;
+        pauseBtn.classList.toggle("paused", simPaused);
+        pauseBtn.innerHTML = simPaused ? "&#9654;" : "&#10074;&#10074;";
+        if (simPaused) {
+            if (simRaf !== null) { cancelAnimationFrame(simRaf); simRaf = null; }
+        } else {
+            lastTs = 0; // supaya dt frame pertama tidak melonjak
+            simRaf = requestAnimationFrame(simStep);
+        }
+    }
+    function stopSim() {
+        simRunning = false;
+        simPaused = false;
+        pauseBtn.style.display = "none";
+        if (simRaf !== null) { cancelAnimationFrame(simRaf); simRaf = null; }
+        flight = null; landing = null; pauseLeft = 0;
+        pendingCands = null; pendingChoice = null;
+        simTargets.clear();
+        shuttleEl.style.display = "none";
+        trailEl.style.display = "none";
+        targetMarksEl.style.display = "none";
+        playBtn.classList.remove("playing");
+        playBtn.innerHTML = "&#9654;"; // play
+        drawAndEnforce();
+    }
+    playBtn.addEventListener("click", () => (simRunning ? stopSim() : startSim()));
+    pauseBtn.addEventListener("click", pauseSim);
+
+    // Saat kembali dari background (layar mati / pindah aplikasi), reset timer
+    // animasi supaya simulasi lanjut mulus, tidak melompat atau macet.
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && simRunning) { lastTs = 0; idleTime = 0; }
+    });
+
+    // ================= Page 2: kontrol pemain =================
+    function bindSlider(id, apply, fmt) {
+        const el = document.getElementById(id);
+        const valEl = document.getElementById(id + "V");
+        el.addEventListener("input", () => {
+            const v = parseFloat(el.value);
+            apply(v);
+            valEl.textContent = fmt(v);
+            drawAndEnforce();
+        });
+    }
+    const f2 = v => v.toFixed(2), f1 = v => v.toFixed(1);
+    bindSlider("spdGreen",  v => playerSpeed.green = v,  f2);
+    bindSlider("spdBlue",   v => playerSpeed.blue = v,   f2);
+    bindSlider("spdPurple", v => playerSpeed.purple = v, f2);
+    bindSlider("spdYellow", v => playerSpeed.yellow = v, f2);
+    bindSlider("ctlReact",  v => T_REACT = v,      f2);
+    bindSlider("ctlSpeed",  v => V_NOMINAL = v,    f1);
+    bindSlider("ctlReach",  v => MAX_REACH_M = v,  f1);
+    bindSlider("ctlBlind",  v => BLIND = v,        f2);
+
+    // Nama pemain bisa diganti sesuka hati; langsung tampil di bawah figur.
+    [["nameGreen", greenName], ["nameBlue", blueName],
+     ["namePurple", purpleName], ["nameYellow", yellowName]].forEach(([id, el]) => {
+        const inp = document.getElementById(id);
+        inp.addEventListener("input", () => { el.textContent = inp.value; });
+    });
+
+    // Kembalikan pemain ke posisi awal (hijau kotak kanan, biru kiri, dst).
+    const HOME = [[green, 227, 440], [blue, 105, 440], [purple, 227, 144], [yellow, 105, 144]];
+    document.getElementById("resetBtn").addEventListener("click", () => {
+        if (simRunning) stopSim();
+        HOME.forEach(([p, x, y]) => { p.setAttribute("cx", x); p.setAttribute("cy", y); });
+        drawAndEnforce();
+    });
+
+    server = green; // default: hijau yang servis (tap hijau/kuning untuk ganti)
     drawAndEnforce();
 })();
 </script>
